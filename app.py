@@ -38,84 +38,84 @@ if archivo_subido is not None:
     meses_disponibles = ["Todo el Histórico"] + sorted(list(df['Mes'].dropna().unique())) if 'Mes' in df.columns else ["Todo el Histórico"]
     mes_seleccionado = st.sidebar.selectbox("Filtro por Mes:", meses_disponibles)
     
-    # Agrupación
+    # Agrupación de tiempo
     opciones_agrupacion = [col for col in ['Lote', 'Día', 'Semana', 'Mes'] if col in df.columns]
     agrupacion = st.sidebar.selectbox("Agrupar gráficos por:", opciones_agrupacion if opciones_agrupacion else df.columns[0])
     
-    st.sidebar.header("🔬 3. Selección de Variables")
-    variables_sel = st.sidebar.multiselect("Variables a analizar:", cols_numericas, default=cols_numericas[:1])
+    # --- CONFIGURACIÓN INDIVIDUAL DE GRÁFICOS Y VARIABLES ---
+    st.sidebar.header("🛠️ 3. Configuración de Gráficos")
 
-    st.sidebar.header("🛠️ 4. Herramientas Visuales")
-    t_barras = st.sidebar.checkbox("Composición de Defectos (Barras)", value=True)
-    t_pareto = st.sidebar.checkbox("Diagrama de Pareto (80/20)", value=True)
+    # Configuración de Gráfico de Control
     t_control = st.sidebar.checkbox("Gráfico de Control (SPC)", value=True)
+    var_control = None
+    if t_control:
+        var_control = st.sidebar.selectbox("Variable para Control SPC:", cols_numericas, key="spc_var")
+
+    st.sidebar.markdown("---")
+    
+    # Configuración de Gráfico de Barras
+    t_barras = st.sidebar.checkbox("Composición (Gráfico de Barras)", value=True)
+    vars_barras = []
+    if t_barras:
+        default_bar = [cols_numericas[0]] if cols_numericas else []
+        vars_barras = st.sidebar.multiselect("Variables para Barras:", cols_numericas, default=default_bar, key="bar_vars")
+
+    st.sidebar.markdown("---")
+
+    # Configuración de Diagrama de Pareto
+    t_pareto = st.sidebar.checkbox("Diagrama de Pareto (80/20)", value=True)
+    vars_pareto = []
+    if t_pareto:
+        vars_pareto = st.sidebar.multiselect("Defectos para Pareto:", cols_numericas, default=cols_numericas, key="pareto_vars")
+
+    st.sidebar.markdown("---")
+
+    # Configuración de Diagrama de Dispersión
     t_dispersion = st.sidebar.checkbox("Diagrama de Dispersión (Regresión)", value=True)
+    var_disp_x = None
+    var_disp_y = None
+    if t_dispersion:
+        var_disp_x = st.sidebar.selectbox("Variable X (Independiente):", cols_numericas, index=0, key="disp_x")
+        var_disp_y = st.sidebar.selectbox("Variable Y (Dependiente):", cols_numericas, index=min(1, len(cols_numericas)-1), key="disp_y")
 
-    # --- MOTOR LÓGICO Y RENDERIZADO ---
-    if not variables_sel:
-        st.warning("⚠️ Selecciona al menos una variable en la barra lateral para generar los gráficos.")
+    # --- MOTOR LÓGICO Y FILTRADO ---
+    df_filtro = df.copy()
+    if mes_seleccionado != "Todo el Histórico":
+        df_filtro = df_filtro[df_filtro['Mes'] == mes_seleccionado]
+        
+    if df_filtro.empty:
+        st.error("No hay datos para el mes seleccionado.")
+        st.stop()
+
+    # Aplicar Agrupación para los gráficos secuenciales (Control y Barras)
+    if agrupacion == 'Lote' or agrupacion not in df_filtro.columns:
+        df_plot = df_filtro.copy()
+        eje_x = agrupacion if agrupacion in df_filtro.columns else df_filtro.index
     else:
-        # APLICAR FILTROS
-        df_filtro = df.copy()
-        if mes_seleccionado != "Todo el Histórico":
-            df_filtro = df_filtro[df_filtro['Mes'] == mes_seleccionado]
-            
-        if df_filtro.empty:
-            st.error("No hay datos para el mes seleccionado.")
-            st.stop()
+        # Agrupamos promediando todas las numéricas por seguridad
+        df_plot = df_filtro.groupby(agrupacion)[cols_numericas].mean().reset_index()
+        df_plot[agrupacion] = df_plot[agrupacion].astype(str)
+        eje_x = agrupacion
 
-        # APLICAR AGRUPACIÓN
-        if agrupacion == 'Lote' or agrupacion not in df_filtro.columns:
-            df_plot = df_filtro.copy()
-            eje_x = agrupacion if agrupacion in df_filtro.columns else df_filtro.index
-        else:
-            df_plot = df_filtro.groupby(agrupacion)[variables_sel].mean().reset_index()
-            df_plot[agrupacion] = df_plot[agrupacion].astype(str)
-            eje_x = agrupacion
-
-        var_principal = variables_sel[0]
-
-        # --- SECCIÓN SUPERIOR: KPIs (TACÓMETROS NATIVOS) ---
-        st.markdown("### 📌 Indicadores Clave (Promedios del Periodo)")
-        cols_kpi = st.columns(min(len(variables_sel), 4))
-        for i, var in enumerate(variables_sel[:4]):
+    # --- SECCIÓN SUPERIOR: KPIs DINÁMICOS ---
+    st.markdown("### 📌 Resumen de Indicadores Clave")
+    variables_kpi = list(set([v for v in [var_control, var_disp_x, var_disp_y] if v] + vars_barras))[:4]
+    if variables_kpi:
+        cols_kpi = st.columns(len(variables_kpi))
+        for i, var in enumerate(variables_kpi):
             media_actual = df_plot[var].mean()
-            cols_kpi[i].metric(label=var, value=f"{media_actual:.2f}")
+            cols_kpi[i].metric(label=f"Promedio: {var}", value=f"{media_actual:.2f}")
+    st.divider()
 
-        st.divider()
+    # --- SECCIÓN CENTRAL: DISTRIBUCIÓN DE PANTALLA ---
+    col1, col2 = st.columns(2)
 
-        # --- SECCIÓN CENTRAL: GRÁFICOS ---
-        col1, col2 = st.columns(2)
-
-        # 1. BARRAS APILADAS
-        if t_barras:
-            with col1:
-                st.subheader("📊 Composición de Variables")
-                fig_bar = px.bar(df_plot, x=eje_x, y=variables_sel, color_discrete_sequence=px.colors.qualitative.Pastel)
-                fig_bar.update_layout(height=400, barmode='stack', margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig_bar, use_container_width=True)
-
-        # 2. DIAGRAMA DE PARETO
-        if t_pareto:
-            with col2:
-                st.subheader("📈 Diagrama de Pareto")
-                promedios = {var: df_filtro[var].mean() for var in variables_sel}
-                df_p = pd.DataFrame(list(promedios.items()), columns=['Var', 'Val']).sort_values(by='Val', ascending=False)
-                if df_p['Val'].sum() > 0:
-                    df_p['Cum'] = (df_p['Val'].cumsum() / df_p['Val'].sum()) * 100
-                    fig_p = make_subplots(specs=[[{"secondary_y": True}]])
-                    fig_p.add_trace(go.Bar(x=df_p['Var'], y=df_p['Val'], name="Impacto", marker_color='#2c3e50'), secondary_y=False)
-                    fig_p.add_trace(go.Scatter(x=df_p['Var'], y=df_p['Cum'], name="% Acum", mode='lines+markers', line=dict(color='#e74c3c', width=3)), secondary_y=True)
-                    fig_p.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0))
-                    fig_p.update_yaxes(range=[0, 105], secondary_y=True)
-                    st.plotly_chart(fig_p, use_container_width=True)
-
-        # 3. GRÁFICO DE CONTROL SPC
-        if t_control:
-            st.divider()
-            st.subheader(f"🎯 Gráfico de Control SPC: {var_principal}")
+    # 1. GRÁFICO DE CONTROL SPC
+    if t_control and var_control:
+        with col1:
+            st.subheader(f"🎯 Gráfico de Control SPC: {var_control}")
             fig_spc = go.Figure()
-            y_data = df_plot[var_principal]
+            y_data = df_plot[var_control]
             media, desv = y_data.mean(), y_data.std()
             
             fig_spc.add_trace(go.Scatter(x=df_plot[eje_x], y=y_data, mode='lines+markers', name='Datos', line=dict(color='#2980b9')))
@@ -124,48 +124,71 @@ if archivo_subido is not None:
                 fig_spc.add_hline(y=media + 3*desv, line_color="red", line_dash="dash", annotation_text="LSC (+3σ)")
                 fig_spc.add_hline(y=max(0, media - 3*desv), line_color="red", line_dash="dash", annotation_text="LIC (-3σ)")
             
-            fig_spc.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0))
+            fig_spc.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0), template="plotly_white")
             st.plotly_chart(fig_spc, use_container_width=True)
 
-        # 4. DIAGRAMA DE DISPERSIÓN (CON DIAGNÓSTICO MATEMÁTICO)
-        if t_dispersion:
+    # 2. GRÁFICO DE BARRAS COMPUESTAS
+    if t_barras and vars_barras:
+        with col2:
+            st.subheader("📊 Composición General Analizada")
+            fig_bar = px.bar(df_plot, x=eje_x, y=vars_barras, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_bar.update_layout(height=400, barmode='stack', margin=dict(l=0, r=0, t=30, b=0), template="plotly_white")
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    # NUEVA FILA DE GRÁFICOS
+    col3, col2_full = st.columns([1, 1])
+
+    # 3. DIAGRAMA DE PARETO
+    if t_pareto and vars_pareto:
+        with col3:
             st.divider()
-            st.subheader("🔍 Análisis de Correlación (Diagrama de Dispersión)")
-            if len(variables_sel) >= 2:
-                var1, var2 = variables_sel[0], variables_sel[1]
-                
-                # Calcular correlación de Pearson
-                mask = np.isfinite(df_filtro[var1]) & np.isfinite(df_filtro[var2])
-                r_pearson = 0
-                diagnostico = "Datos insuficientes"
-                
-                if mask.sum() > 2:
-                    r_pearson, _ = stats.pearsonr(df_filtro[var1][mask], df_filtro[var2][mask])
-                    if r_pearson > 0.7: diagnostico = "Correlación Positiva Evidente ↗️"
-                    elif r_pearson > 0.3: diagnostico = "Correlación Positiva ↗️"
-                    elif r_pearson > -0.3: diagnostico = "Sin Correlación 🔀"
-                    elif r_pearson > -0.7: diagnostico = "Correlación Negativa ↘️"
-                    else: diagnostico = "Correlación Negativa Evidente ↘️"
-
-                # Mostrar Diagnóstico en pantalla
-                col_diag1, col_diag2 = st.columns(2)
-                col_diag1.info(f"**Diagnóstico del Patrón:** {diagnostico}")
-                col_diag2.info(f"**Coeficiente de Pearson (r):** {r_pearson:.3f}")
-
-                # Determinar color de los puntos (por Agrupación si es posible)
-                color_col = agrupacion if agrupacion in df_filtro.columns else None
-                
-                fig_disp = px.scatter(df_filtro, x=var1, y=var2, color=color_col, trendline="ols",
-                                      color_continuous_scale='Viridis')
-                
-                # Estilo: Nube de puntos semi-transparente y línea de tendencia roja sólida
-                fig_disp.update_traces(marker=dict(size=9, opacity=0.7), selector=dict(mode='markers'))
-                fig_disp.update_traces(line=dict(color='red', width=4), selector=dict(mode='lines'))
-                fig_disp.update_layout(height=500, margin=dict(l=0, r=0, t=10, b=0))
-                
-                st.plotly_chart(fig_disp, use_container_width=True)
+            st.subheader("📈 Diagrama de Pareto de Defectos")
+            promedios = {var: df_filtro[var].mean() for var in vars_pareto}
+            df_p = pd.DataFrame(list(promedios.items()), columns=['Var', 'Val']).sort_values(by='Val', ascending=False)
+            if df_p['Val'].sum() > 0:
+                df_p['Cum'] = (df_p['Val'].cumsum() / df_p['Val'].sum()) * 100
+                fig_p = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_p.add_trace(go.Bar(x=df_p['Var'], y=df_p['Val'], name="Impacto", marker_color='#2c3e50'), secondary_y=False)
+                fig_p.add_trace(go.Scatter(x=df_p['Var'], y=df_p['Cum'], name="% Acum", mode='lines+markers', line=dict(color='#e74c3c', width=3)), secondary_y=True)
+                fig_p.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0), template="plotly_white", showlegend=False)
+                fig_p.update_yaxes(range=[0, 105], secondary_y=True)
+                st.plotly_chart(fig_p, use_container_width=True)
             else:
-                st.warning("⚠️ Selecciona exactamente 2 variables en el menú lateral para evaluar su correlación.")
+                st.warning("No hay valores suficientes para calcular el Pareto.")
+
+    # 4. DIAGRAMA DE DISPERSIÓN CON REGRESIÓN
+    if t_dispersion and var_disp_x and var_disp_y:
+        with col2_full:
+            st.divider()
+            st.subheader(f"🔍 Análisis de Correlación: {var_disp_x} vs {var_disp_y}")
+            
+            # Calcular correlación de Pearson sobre los datos filtrados
+            mask = np.isfinite(df_filtro[var_disp_x]) & np.isfinite(df_filtro[var_disp_y])
+            r_pearson = 0
+            diagnostico = "Datos insuficientes"
+            
+            if mask.sum() > 2:
+                r_pearson, _ = stats.pearsonr(df_filtro[var_disp_x][mask], df_filtro[var_disp_y][mask])
+                if r_pearson > 0.7: diagnostico = "Correlación Positiva Evidente ↗️"
+                elif r_pearson > 0.3: diagnostico = "Correlación Positiva ↗️"
+                elif r_pearson > -0.3: diagnostico = "Sin Correlación 🔀"
+                elif r_pearson > -0.7: diagnostico = "Correlación Negativa ↘️"
+                else: diagnostico = "Correlación Negativa Evidente ↘️"
+
+            # Mostrar bloques de diagnóstico debajo del título de la sección
+            c_box1, c_box2 = st.columns(2)
+            c_box1.info(f"**Patrón:** {diagnostico}")
+            c_box2.info(f"**Coeficiente r:** {r_pearson:.3f}")
+
+            # Color estático oscuro para las muestras y regresión en rojo brillante
+            color_by = agrupacion if agrupacion in df_filtro.columns else None
+            fig_disp = px.scatter(df_filtro, x=var_disp_x, y=var_disp_y, color=color_by, trendline="ols",
+                                  color_continuous_scale='Viridis')
+            
+            fig_disp.update_traces(marker=dict(size=9, opacity=0.75), selector=dict(mode='markers'))
+            fig_disp.update_traces(line=dict(color='red', width=4), selector=dict(mode='lines'))
+            fig_disp.update_layout(height=400, margin=dict(l=0, r=0, t=10, b=0), template="plotly_white")
+            st.plotly_chart(fig_disp, use_container_width=True)
 
 else:
-    st.info("👈 Esperando datos... Por favor, carga tu archivo Excel (.xlsx) en la barra lateral para iniciar.")
+    st.info("👈 Por favor, carga tu archivo Excel (.xlsx) en la barra lateral para desplegar los controles operativos.")
