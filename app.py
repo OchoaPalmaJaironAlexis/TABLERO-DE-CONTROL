@@ -16,12 +16,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilo CSS inyectado para mejorar el aspecto corporativo
+# Estilo CSS inyectado para FONDO AZULADO OSCURO y métricas corporativas
 st.markdown("""
     <style>
-    .main {background-color: #f8f9fa;}
-    h1, h2, h3 {color: #2c3e50; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;}
-    .stMetric {background-color: white; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+    /* Fondo principal de la aplicación */
+    .stApp {
+        background-color: #0a1428; 
+    }
+    /* Estilo de la barra lateral */
+    [data-testid="stSidebar"] {
+        background-color: #060b14;
+    }
+    /* Tipografía global */
+    h1, h2, h3, h4, h5, h6, p, span {
+        color: #e2e8f0 !important; 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    /* Tarjetas de KPI (Métricas) */
+    .stMetric {
+        background-color: #112240 !important; 
+        padding: 15px; 
+        border-radius: 8px; 
+        border: 1px solid #1d3557;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+    }
+    /* Color resaltado para los números de las métricas */
+    [data-testid="stMetricValue"] {
+        color: #48cae4 !important; 
+    }
+    /* Ajuste de separadores */
+    hr {
+        border-color: #1d3557;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -32,7 +58,6 @@ st.markdown("""
 def load_data(file):
     try:
         df = pd.read_excel(file)
-        # Limpieza básica
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'])
         return df
@@ -43,7 +68,6 @@ def load_data(file):
 # 3. BARRA LATERAL (MENÚ PRINCIPAL)
 # ==========================================
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3050/3050525.png", width=80)
     st.markdown("## **HACCP Quality OS**")
     st.markdown("---")
     
@@ -132,12 +156,11 @@ with tab1:
     
     with colA:
         if 'Proveedor' in df.columns and 'Estado_Lote' in df.columns:
-            # Gráfico de barras agrupadas: Estado por Proveedor
             df_estado = df.groupby(['Proveedor', 'Estado_Lote']).size().reset_index(name='Cantidad')
             fig_prov = px.bar(df_estado, x='Proveedor', y='Cantidad', color='Estado_Lote', 
                               title="Rendimiento por Finca / Proveedor",
-                              color_discrete_map={'APROBADO': '#27ae60', 'RETENIDO': '#f39c12', 'RECHAZADO': '#c0392b'})
-            fig_prov.update_layout(height=400, template="plotly_white")
+                              color_discrete_map={'APROBADO': '#2ecc71', 'RETENIDO': '#f1c40f', 'RECHAZADO': '#e74c3c'})
+            fig_prov.update_layout(height=400, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_prov, use_container_width=True)
         else:
             st.info("Faltan datos de 'Proveedor' o 'Estado_Lote' para este análisis.")
@@ -147,14 +170,14 @@ with tab1:
             uni_mean = df['Uniformidad'].mean()
             fig_gauge = go.Figure(go.Indicator(
                 mode = "gauge+number", value = uni_mean,
-                title = {'text': "Factor de Uniformidad Global"},
+                title = {'text': "Factor de Uniformidad Global", 'font': {'color': 'white'}},
                 gauge = {
-                    'axis': {'range': [1.0, 1.8]},
-                    'bar': {'color': "#2c3e50"},
-                    'steps': [{'range': [1.0, 1.4], 'color': "#a9dfbf"}, {'range': [1.4, 1.8], 'color': "#f5b7b1"}],
-                    'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 1.4}
+                    'axis': {'range': [1.0, 1.8], 'tickcolor': "white"},
+                    'bar': {'color': "#48cae4"},
+                    'steps': [{'range': [1.0, 1.4], 'color': "#1d3557"}, {'range': [1.4, 1.8], 'color': "#3a0ca3"}],
+                    'threshold': {'line': {'color': "#e74c3c", 'width': 4}, 'thickness': 0.75, 'value': 1.4}
                 }))
-            fig_gauge.update_layout(height=400)
+            fig_gauge.update_layout(height=400, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_gauge, use_container_width=True)
 
 # ------------------------------------------
@@ -166,21 +189,29 @@ with tab2:
     if 'Temperatura_Arribo' in df.columns:
         fig_t = px.line(df, x='Lote' if 'Lote' in df.columns else df.index, y='Temperatura_Arribo', 
                         markers=True, title="Control de Temperatura de Arribo")
-        fig_t.add_hrect(y0=0, y1=4, fillcolor="green", opacity=0.1, line_width=0)
-        fig_t.add_hline(y=4, line_dash="dash", line_color="red", annotation_text="Límite Legal Mínimo (4°C)")
-        fig_t.update_layout(height=350, template="plotly_white", margin=dict(t=40, b=0))
+        fig_t.add_hrect(y0=0, y1=4, fillcolor="#2ecc71", opacity=0.1, line_width=0)
+        fig_t.add_hline(y=4, line_dash="dash", line_color="#e74c3c", annotation_text="Límite Legal Mínimo (4°C)")
+        fig_t.update_layout(height=350, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=40, b=0))
         st.plotly_chart(fig_t, use_container_width=True)
 
     if 'Sulfito_Residual' in df.columns:
         y_data = df['Sulfito_Residual']
         m, sd = y_data.mean(), y_data.std()
         fig_s = go.Figure()
-        fig_s.add_trace(go.Scatter(x=df['Lote'] if 'Lote' in df.columns else df.index, y=y_data, mode='lines+markers', name='PPM Sulfito', line=dict(color='#2980b9')))
-        fig_s.add_hline(y=m, line_color="green", annotation_text="Media de Proceso")
-        fig_s.add_hline(y=100, line_dash="solid", line_color="red", annotation_text="Límite Legal (100 ppm)")
+        
+        # Datos principales
+        fig_s.add_trace(go.Scatter(x=df['Lote'] if 'Lote' in df.columns else df.index, y=y_data, mode='lines+markers', name='PPM Sulfito', line=dict(color='#48cae4')))
+        
+        # Línea de Media y Límite Legal
+        fig_s.add_hline(y=m, line_color="#2ecc71", annotation_text="Media de Proceso")
+        fig_s.add_hline(y=100, line_dash="solid", line_color="#e74c3c", annotation_text="Límite Legal (100 ppm)")
+        
+        # Límites de Control Superior (LSC) e Inferior (LIC)
         if not np.isnan(sd):
-            fig_s.add_hline(y=m + 3*sd, line_dash="dot", line_color="orange", annotation_text="LSC (+3σ)")
-        fig_s.update_layout(title="Control Estadístico SPC: Sulfito Residual", height=350, template="plotly_white", margin=dict(t=40, b=0))
+            fig_s.add_hline(y=m + 3*sd, line_dash="dot", line_color="#f39c12", annotation_text="LSC (+3σ)")
+            fig_s.add_hline(y=max(0, m - 3*sd), line_dash="dot", line_color="#f39c12", annotation_text="LIC (-3σ)")
+            
+        fig_s.update_layout(title="Control Estadístico SPC: Sulfito Residual", height=350, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=40, b=0))
         st.plotly_chart(fig_s, use_container_width=True)
 
 # ------------------------------------------
@@ -193,7 +224,6 @@ with tab3:
     
     # PARETO DE DEFECTOS
     with colX:
-        # Extraer automáticamente columnas que sean defectos (empiezan con DM_ o DMen_)
         cols_defectos = [c for c in df.columns if c.startswith('DM_') or c.startswith('DMen_')]
         if cols_defectos:
             st.markdown("##### 📉 Priorización de Defectos (Pareto)")
@@ -202,11 +232,10 @@ with tab3:
             if df_p['Impacto'].sum() > 0:
                 df_p['Acumulado'] = (df_p['Impacto'].cumsum() / df_p['Impacto'].sum()) * 100
                 
-                # USO CORRECTO DE MAKE_SUBPLOTS
                 fig_p = make_subplots(specs=[[{"secondary_y": True}]])
-                fig_p.add_trace(go.Bar(x=df_p['Defecto'], y=df_p['Impacto'], name="Impacto", marker_color='#34495e'), secondary_y=False)
+                fig_p.add_trace(go.Bar(x=df_p['Defecto'], y=df_p['Impacto'], name="Impacto", marker_color='#48cae4'), secondary_y=False)
                 fig_p.add_trace(go.Scatter(x=df_p['Defecto'], y=df_p['Acumulado'], name="% Acumulado", mode='lines+markers', line=dict(color='#e74c3c', width=3)), secondary_y=True)
-                fig_p.update_layout(height=450, template="plotly_white", margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
+                fig_p.update_layout(height=450, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
                 fig_p.update_yaxes(range=[0, 105], secondary_y=True)
                 st.plotly_chart(fig_p, use_container_width=True)
             else:
@@ -235,10 +264,10 @@ with tab3:
                 
                 st.caption(f"**Diagnóstico:** {diag} | **Pearson (r):** {r_pearson:.2f}")
                 
-                fig_disp = px.scatter(df, x=var_x, y=var_y, trendline="ols", color='Proveedor' if 'Proveedor' in df.columns else None, color_continuous_scale='Viridis')
-                fig_disp.update_traces(marker=dict(size=8, opacity=0.7), selector=dict(mode='markers'))
-                fig_disp.update_traces(line=dict(color='red', width=4), selector=dict(mode='lines'))
-                fig_disp.update_layout(height=350, template="plotly_white", margin=dict(t=10, b=0))
+                fig_disp = px.scatter(df, x=var_x, y=var_y, trendline="ols", color='Proveedor' if 'Proveedor' in df.columns else None, color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_disp.update_traces(marker=dict(size=8, opacity=0.8), selector=dict(mode='markers'))
+                fig_disp.update_traces(line=dict(color='#e74c3c', width=4), selector=dict(mode='lines'))
+                fig_disp.update_layout(height=350, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=0))
                 st.plotly_chart(fig_disp, use_container_width=True)
             else:
                 st.warning("Datos insuficientes para calcular correlación.")
