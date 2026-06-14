@@ -16,37 +16,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilo CSS inyectado para FONDO AZULADO OSCURO y métricas corporativas
+# Estilo CSS inyectado para FONDO AZUL PIZARRA (Dark Mode Suave)
 st.markdown("""
     <style>
     /* Fondo principal de la aplicación */
     .stApp {
-        background-color: #0a1428; 
+        background-color: #1e293b; 
     }
     /* Estilo de la barra lateral */
     [data-testid="stSidebar"] {
-        background-color: #060b14;
+        background-color: #0f172a;
     }
     /* Tipografía global */
     h1, h2, h3, h4, h5, h6, p, span {
-        color: #e2e8f0 !important; 
+        color: #f1f5f9 !important; 
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     /* Tarjetas de KPI (Métricas) */
     .stMetric {
-        background-color: #112240 !important; 
+        background-color: #334155 !important; 
         padding: 15px; 
         border-radius: 8px; 
-        border: 1px solid #1d3557;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        border: 1px solid #475569;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
     }
     /* Color resaltado para los números de las métricas */
     [data-testid="stMetricValue"] {
-        color: #48cae4 !important; 
+        color: #38bdf8 !important; 
     }
     /* Ajuste de separadores */
     hr {
-        border-color: #1d3557;
+        border-color: #475569;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -173,8 +173,8 @@ with tab1:
                 title = {'text': "Factor de Uniformidad Global", 'font': {'color': 'white'}},
                 gauge = {
                     'axis': {'range': [1.0, 1.8], 'tickcolor': "white"},
-                    'bar': {'color': "#48cae4"},
-                    'steps': [{'range': [1.0, 1.4], 'color': "#1d3557"}, {'range': [1.4, 1.8], 'color': "#3a0ca3"}],
+                    'bar': {'color': "#38bdf8"},
+                    'steps': [{'range': [1.0, 1.4], 'color': "#1e293b"}, {'range': [1.4, 1.8], 'color': "#475569"}],
                     'threshold': {'line': {'color': "#e74c3c", 'width': 4}, 'thickness': 0.75, 'value': 1.4}
                 }))
             fig_gauge.update_layout(height=400, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
@@ -190,7 +190,8 @@ with tab2:
         fig_t = px.line(df, x='Lote' if 'Lote' in df.columns else df.index, y='Temperatura_Arribo', 
                         markers=True, title="Control de Temperatura de Arribo")
         fig_t.add_hrect(y0=0, y1=4, fillcolor="#2ecc71", opacity=0.1, line_width=0)
-        fig_t.add_hline(y=4, line_dash="dash", line_color="#e74c3c", annotation_text="Límite Legal Mínimo (4°C)")
+        # CORRECCIÓN DE LA ANOTACIÓN AL LÍMITE MÁXIMO
+        fig_t.add_hline(y=4, line_dash="dash", line_color="#e74c3c", annotation_text="Límite Máximo Permitido (4°C)")
         fig_t.update_layout(height=350, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=40, b=0))
         st.plotly_chart(fig_t, use_container_width=True)
 
@@ -200,11 +201,11 @@ with tab2:
         fig_s = go.Figure()
         
         # Datos principales
-        fig_s.add_trace(go.Scatter(x=df['Lote'] if 'Lote' in df.columns else df.index, y=y_data, mode='lines+markers', name='PPM Sulfito', line=dict(color='#48cae4')))
+        fig_s.add_trace(go.Scatter(x=df['Lote'] if 'Lote' in df.columns else df.index, y=y_data, mode='lines+markers', name='PPM Sulfito', line=dict(color='#38bdf8')))
         
         # Línea de Media y Límite Legal
         fig_s.add_hline(y=m, line_color="#2ecc71", annotation_text="Media de Proceso")
-        fig_s.add_hline(y=100, line_dash="solid", line_color="#e74c3c", annotation_text="Límite Legal (100 ppm)")
+        fig_s.add_hline(y=100, line_dash="solid", line_color="#e74c3c", annotation_text="Límite Legal Máximo (100 ppm)")
         
         # Límites de Control Superior (LSC) e Inferior (LIC)
         if not np.isnan(sd):
@@ -233,7 +234,7 @@ with tab3:
                 df_p['Acumulado'] = (df_p['Impacto'].cumsum() / df_p['Impacto'].sum()) * 100
                 
                 fig_p = make_subplots(specs=[[{"secondary_y": True}]])
-                fig_p.add_trace(go.Bar(x=df_p['Defecto'], y=df_p['Impacto'], name="Impacto", marker_color='#48cae4'), secondary_y=False)
+                fig_p.add_trace(go.Bar(x=df_p['Defecto'], y=df_p['Impacto'], name="Impacto", marker_color='#38bdf8'), secondary_y=False)
                 fig_p.add_trace(go.Scatter(x=df_p['Defecto'], y=df_p['Acumulado'], name="% Acumulado", mode='lines+markers', line=dict(color='#e74c3c', width=3)), secondary_y=True)
                 fig_p.update_layout(height=450, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
                 fig_p.update_yaxes(range=[0, 105], secondary_y=True)
