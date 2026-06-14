@@ -2,151 +2,243 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
+import scipy.stats as stats
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Tablero HACCP - Recepción", layout="wide")
-st.title("🦐 Panel de Liberación de Lotes y Control de Calidad")
+# ==========================================
+# 1. CONFIGURACIÓN DE PÁGINA (UI/UX)
+# ==========================================
+st.set_page_config(
+    page_title="HACCP Quality OS | Oceánica",
+    page_icon="🦐",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- CARGA DE DATOS ---
-st.sidebar.header("📂 Carga de Datos")
-archivo = st.sidebar.file_uploader("Sube el archivo HACCP", type=["xlsx"])
+# Estilo CSS inyectado para mejorar el aspecto corporativo
+st.markdown("""
+    <style>
+    .main {background-color: #f8f9fa;}
+    h1, h2, h3 {color: #2c3e50; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;}
+    .stMetric {background-color: white; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+    </style>
+""", unsafe_allow_html=True)
 
-if archivo:
-    df = pd.read_excel(archivo)
+# ==========================================
+# 2. MOTOR DE DATOS (CON CACHÉ EMPRESARIAL)
+# ==========================================
+@st.cache_data(show_spinner="Procesando base de datos...")
+def load_data(file):
+    try:
+        df = pd.read_excel(file)
+        # Limpieza básica
+        if 'Fecha' in df.columns:
+            df['Fecha'] = pd.to_datetime(df['Fecha'])
+        return df
+    except Exception as e:
+        return None
+
+# ==========================================
+# 3. BARRA LATERAL (MENÚ PRINCIPAL)
+# ==========================================
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/3050/3050525.png", width=80)
+    st.markdown("## **HACCP Quality OS**")
+    st.markdown("---")
     
-    # Filtro Temporal
-    meses = ["Todos"] + sorted(list(df['Mes'].unique()))
-    mes_sel = st.sidebar.selectbox("Filtro por Mes:", meses)
-    if mes_sel != "Todos":
-        df = df[df['Mes'] == mes_sel]
-
-    # =========================================================================
-    # 0. TARJETAS KPI (CABECERA)
-    # =========================================================================
-    st.markdown("### 📌 Indicadores Críticos del Periodo")
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    st.markdown("### 📂 1. Origen de Datos")
+    archivo_subido = st.file_uploader("Importar matriz de inspección (.xlsx)", type=["xlsx"])
     
-    # KPI 1: Tasa de Aprobación
-    total_lotes = len(df)
+    st.markdown("---")
+    st.markdown("### ⚙️ 2. Filtros Globales")
+    
+if archivo_subido is None:
+    st.title("🦐 Sistema Inteligente de Liberación de Lotes")
+    st.info("👈 **Bienvenido al sistema.** Por favor, importe el archivo de inspección en el menú lateral para inicializar el motor analítico.")
+    st.stop()
+
+# Carga de datos
+df = load_data(archivo_subido)
+if df is None:
+    st.error("Error al leer el archivo. Asegúrese de que sea un formato Excel válido.")
+    st.stop()
+
+# Filtros dinámicos en la barra lateral
+if 'Mes' in df.columns:
+    meses_disponibles = ["Histórico Completo"] + sorted(list(df['Mes'].dropna().unique()))
+    mes_seleccionado = st.sidebar.selectbox("Filtro Temporal (Mes):", meses_disponibles)
+    if mes_seleccionado != "Histórico Completo":
+        df = df[df['Mes'] == mes_seleccionado]
+
+if 'Proveedor' in df.columns:
+    proveedores_disponibles = ["Todos los Proveedores"] + sorted(list(df['Proveedor'].dropna().unique()))
+    proveedor_sel = st.sidebar.selectbox("Filtro por Proveedor:", proveedores_disponibles)
+    if proveedor_sel != "Todos los Proveedores":
+        df = df[df['Proveedor'] == proveedor_sel]
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Oceánica HACCP System v2.1 | 2026")
+
+# ==========================================
+# 4. ENCABEZADO Y KPIS PRINCIPALES
+# ==========================================
+st.title("📊 Dashboard de Inteligencia de Calidad")
+st.markdown("Monitoreo en tiempo real de tolerancias biológicas y fisicoquímicas.")
+
+# Lógica de cálculo de KPIs
+total_lotes = len(df)
+if 'Estado_Lote' in df.columns:
     aprobados = len(df[df['Estado_Lote'] == 'APROBADO'])
+    rechazados = len(df[df['Estado_Lote'] == 'RECHAZADO'])
     tasa_aprobacion = (aprobados / total_lotes) * 100 if total_lotes > 0 else 0
-    kpi1.metric("Tasa de Aprobación", f"{tasa_aprobacion:.1f}%", f"{aprobados} de {total_lotes} Lotes")
-
-    # KPI 2: Top Proveedor Crítico
-    rechazados_retenidos = df[df['Estado_Lote'].isin(['RECHAZADO', 'RETENIDO'])]
-    if not rechazados_retenidos.empty:
-        top_proveedor = rechazados_retenidos['Proveedor'].value_counts().idxmax()
-        kpi2.metric("⚠️ Proveedor con Más Alertas", top_proveedor)
-    else:
-        kpi2.metric("⚠️ Proveedor con Más Alertas", "Sin Alertas")
-
-    # KPI 3 & 4: Semáforos de Límites Cero Tolerancia
-    melanosis_detectada = df['DM_Melanosis'].max() > 0
-    temp_critica = df['Temperatura_Arribo'].max() > 4.0
-    
-    if melanosis_detectada:
-        kpi3.error("🔴 ALERTA: Melanosis Detectada (>0%)")
-    else:
-        kpi3.success("🟢 Melanosis: 0% (Conforme)")
-        
-    if temp_critica:
-        kpi4.error(f"🔴 ALERTA Temp: Max {df['Temperatura_Arribo'].max():.1f}°C")
-    else:
-        kpi4.success("🟢 Temp Arribo: < 4.0°C (Conforme)")
-
-    st.divider()
-
-    # =========================================================================
-    # 1. VARIABLES CRÍTICAS DE CONTROL
-    # =========================================================================
-    st.markdown("### 1️⃣ Variables Críticas de Control (Inocuidad)")
-    col1_1, col1_2 = st.columns(2)
-
-    with col1_1:
-        # Gráfico de Línea: Temperatura
-        fig_temp = px.line(df, x='Lote', y='Temperatura_Arribo', markers=True, color='Proveedor', title="Temperatura de Arribo por Lote (Límite: 4°C)")
-        fig_temp.add_hrect(y0=0, y1=4, fillcolor="green", opacity=0.1, line_width=0)
-        fig_temp.add_hline(y=4, line_dash="dash", line_color="red", annotation_text="Límite Máximo 4°C")
-        st.plotly_chart(fig_temp, use_container_width=True)
-
-    with col1_2:
-        # Gráfico SPC: Sulfito Residual
-        fig_sulf = px.scatter(df, x='Lote', y='Sulfito_Residual', color='Proveedor', title="Control de Sulfito Residual (Límite: 100 ppm)")
-        fig_sulf.add_hline(y=df['Sulfito_Residual'].mean(), line_color="blue", annotation_text="Media")
-        fig_sulf.add_hline(y=100, line_dash="dash", line_color="red", annotation_text="Límite Legal (100 ppm)")
-        st.plotly_chart(fig_sulf, use_container_width=True)
-
-    st.divider()
-
-    # =========================================================================
-    # 2. VARIABLES DE PESO Y UNIFORMIDAD
-    # =========================================================================
-    st.markdown("### 2️⃣ Control de Peso, Talla y Uniformidad")
-    col2_1, col2_2 = st.columns([2, 1])
-
-    with col2_1:
-        # Gráfico de Barras Agrupadas: Pesos Drenados
-        # Transformar datos para graficar las 3 muestras
-        df_pesos = df[['Lote', 'Peso_Guia', 'Peso_M1', 'Peso_M2', 'Peso_M3']].melt(id_vars=['Lote', 'Peso_Guia'], var_name='Muestra', value_name='Peso (g)')
-        fig_peso = px.bar(df_pesos, x='Lote', y='Peso (g)', color='Muestra', barmode='group', title="Pesos Drenados vs Peso Declarado")
-        fig_peso.add_trace(go.Scatter(x=df['Lote'], y=df['Peso_Guia'], mode='lines', name='Peso Guía Ideal', line=dict(color='black', width=3, dash='dot')))
-        st.plotly_chart(fig_peso, use_container_width=True)
-
-    with col2_2:
-        # Tacómetro de Uniformidad (Promedio del mes)
-        uniformidad_prom = df['Uniformidad'].mean()
-        fig_uni = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = uniformidad_prom,
-            title = {'text': "Factor de Uniformidad Promedio"},
-            gauge = {
-                'axis': {'range': [1.0, 1.8]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [1.0, 1.4], 'color': "lightgreen"},
-                    {'range': [1.4, 1.8], 'color': "salmon"}
-                ],
-                'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 1.4}
-            }
-        ))
-        st.plotly_chart(fig_uni, use_container_width=True)
-
-    st.divider()
-
-    # =========================================================================
-    # 3. CONTROL DE DEFECTOS (MAYORES Y MENORES)
-    # =========================================================================
-    st.markdown("### 3️⃣ Composición de Defectos y Tendencias")
-    col3_1, col3_2 = st.columns(2)
-
-    # Nombres de las columnas de defectos
-    defectos_cols = ['DM_Melanosis', 'DM_Deshidratacion', 'DM_Cabeza_Negra', 'DM_Cabeza_Roja', 'DM_Cabeza_Floja', 'DM_Estropeado',
-                     'DMen_Antenas_Rotas', 'DMen_Cola_Rota', 'DMen_Blando', 'DMen_Manchas', 'DMen_Mudado', 'DMen_Vena']
-
-    with col3_1:
-        # Diagrama de Pareto de los 12 Defectos
-        suma_defectos = df[defectos_cols].sum().sort_values(ascending=False)
-        df_pareto = pd.DataFrame({'Defecto': suma_defectos.index, 'Impacto': suma_defectos.values})
-        df_pareto['Acumulado %'] = (df_pareto['Impacto'].cumsum() / df_pareto['Impacto'].sum()) * 100
-
-        fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_pareto.add_trace(go.Bar(x=df_pareto['Defecto'], y=df_pareto['Impacto'], marker_color='#34495e', name="Total Detectado"), secondary_y=False)
-        fig_pareto.add_trace(go.Scatter(x=df_pareto['Defecto'], y=df_pareto['Acumulado %'], mode='lines+markers', line=dict(color='#e74c3c', width=3), name="% Acumulado"), secondary_y=True)
-        fig_pareto.update_layout(title="Pareto: Impacto Acumulado de los 12 Defectos", showlegend=False)
-        st.plotly_chart(fig_pareto, use_container_width=True)
-
-    with col3_2:
-        # Tendencia de Defectos Mayores vs Menores
-        fig_tendencia = go.Figure()
-        fig_tendencia.add_trace(go.Scatter(x=df['Lote'], y=df['Total_Defectos_Mayores'], mode='lines', name='Total Mayores', line=dict(color='darkred')))
-        fig_tendencia.add_trace(go.Scatter(x=df['Lote'], y=df['Total_Defectos_Menores'], mode='lines', name='Total Menores', line=dict(color='orange')))
-        
-        # Líneas de Límite Legal
-        fig_tendencia.add_hline(y=12, line_dash="dash", line_color="darkred", annotation_text="Límite Mayores (12%)")
-        fig_tendencia.add_hline(y=15, line_dash="dash", line_color="orange", annotation_text="Límite Menores (15%)")
-        
-        fig_tendencia.update_layout(title="Tendencia Histórica: Límites de Calidad Permitidos")
-        st.plotly_chart(fig_tendencia, use_container_width=True)
-
 else:
-    st.info("Sube el archivo 'datos_haccp_camaron.xlsx' en el menú lateral para inicializar el sistema.")
+    tasa_aprobacion, aprobados, rechazados = 0, 0, 0
+
+temp_max = df['Temperatura_Arribo'].max() if 'Temperatura_Arribo' in df.columns else 0
+melanosis_max = df['DM_Melanosis'].max() if 'DM_Melanosis' in df.columns else 0
+
+# Renderizado de Tarjetas KPI
+k1, k2, k3, k4 = st.columns(4)
+k1.metric(label="Tasa de Aprobación", value=f"{tasa_aprobacion:.1f}%", delta=f"{aprobados} Lotes OK" if tasa_aprobacion > 80 else f"-{rechazados} Rechazados", delta_color="normal" if tasa_aprobacion > 80 else "inverse")
+
+if temp_max <= 4.0:
+    k2.metric(label="Temperatura Pico", value=f"{temp_max:.1f} °C", delta="Conforme (<4.0)", delta_color="normal")
+else:
+    k2.metric(label="Temperatura Pico", value=f"{temp_max:.1f} °C", delta="Brecha Crítica (>4.0)", delta_color="inverse")
+
+if melanosis_max == 0:
+    k3.metric(label="Incidencia Melanosis", value="0%", delta="Conforme", delta_color="normal")
+else:
+    k3.metric(label="Incidencia Melanosis", value=f"Alerta", delta="Violación Límite Cero", delta_color="inverse")
+
+if 'Sulfito_Residual' in df.columns:
+    sulfito_prom = df['Sulfito_Residual'].mean()
+    k4.metric(label="Promedio Sulfito", value=f"{sulfito_prom:.0f} ppm", delta="Límite 100 ppm", delta_color="off")
+
+st.markdown("---")
+
+# ==========================================
+# 5. ENRUTADOR DE PESTAÑAS (NAVEGACIÓN)
+# ==========================================
+tab1, tab2, tab3 = st.tabs(["📋 Resumen Ejecutivo", "📈 Control Estadístico (SPC)", "🔬 Análisis de Causa Raíz"])
+
+# ------------------------------------------
+# PESTAÑA 1: RESUMEN EJECUTIVO
+# ------------------------------------------
+with tab1:
+    st.subheader("Estado General del Flujo de Recepción")
+    colA, colB = st.columns([6, 4])
+    
+    with colA:
+        if 'Proveedor' in df.columns and 'Estado_Lote' in df.columns:
+            # Gráfico de barras agrupadas: Estado por Proveedor
+            df_estado = df.groupby(['Proveedor', 'Estado_Lote']).size().reset_index(name='Cantidad')
+            fig_prov = px.bar(df_estado, x='Proveedor', y='Cantidad', color='Estado_Lote', 
+                              title="Rendimiento por Finca / Proveedor",
+                              color_discrete_map={'APROBADO': '#27ae60', 'RETENIDO': '#f39c12', 'RECHAZADO': '#c0392b'})
+            fig_prov.update_layout(height=400, template="plotly_white")
+            st.plotly_chart(fig_prov, use_container_width=True)
+        else:
+            st.info("Faltan datos de 'Proveedor' o 'Estado_Lote' para este análisis.")
+
+    with colB:
+        if 'Uniformidad' in df.columns:
+            uni_mean = df['Uniformidad'].mean()
+            fig_gauge = go.Figure(go.Indicator(
+                mode = "gauge+number", value = uni_mean,
+                title = {'text': "Factor de Uniformidad Global"},
+                gauge = {
+                    'axis': {'range': [1.0, 1.8]},
+                    'bar': {'color': "#2c3e50"},
+                    'steps': [{'range': [1.0, 1.4], 'color': "#a9dfbf"}, {'range': [1.4, 1.8], 'color': "#f5b7b1"}],
+                    'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 1.4}
+                }))
+            fig_gauge.update_layout(height=400)
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+# ------------------------------------------
+# PESTAÑA 2: CONTROL ESTADÍSTICO (SPC)
+# ------------------------------------------
+with tab2:
+    st.subheader("Monitoreo de Variables Críticas (Inocuidad y Calidad)")
+    
+    if 'Temperatura_Arribo' in df.columns:
+        fig_t = px.line(df, x='Lote' if 'Lote' in df.columns else df.index, y='Temperatura_Arribo', 
+                        markers=True, title="Control de Temperatura de Arribo")
+        fig_t.add_hrect(y0=0, y1=4, fillcolor="green", opacity=0.1, line_width=0)
+        fig_t.add_hline(y=4, line_dash="dash", line_color="red", annotation_text="Límite Legal Mínimo (4°C)")
+        fig_t.update_layout(height=350, template="plotly_white", margin=dict(t=40, b=0))
+        st.plotly_chart(fig_t, use_container_width=True)
+
+    if 'Sulfito_Residual' in df.columns:
+        y_data = df['Sulfito_Residual']
+        m, sd = y_data.mean(), y_data.std()
+        fig_s = go.Figure()
+        fig_s.add_trace(go.Scatter(x=df['Lote'] if 'Lote' in df.columns else df.index, y=y_data, mode='lines+markers', name='PPM Sulfito', line=dict(color='#2980b9')))
+        fig_s.add_hline(y=m, line_color="green", annotation_text="Media de Proceso")
+        fig_s.add_hline(y=100, line_dash="solid", line_color="red", annotation_text="Límite Legal (100 ppm)")
+        if not np.isnan(sd):
+            fig_s.add_hline(y=m + 3*sd, line_dash="dot", line_color="orange", annotation_text="LSC (+3σ)")
+        fig_s.update_layout(title="Control Estadístico SPC: Sulfito Residual", height=350, template="plotly_white", margin=dict(t=40, b=0))
+        st.plotly_chart(fig_s, use_container_width=True)
+
+# ------------------------------------------
+# PESTAÑA 3: ANÁLISIS DE CAUSA RAÍZ
+# ------------------------------------------
+with tab3:
+    st.subheader("Análisis de Defectos Físicos y Biológicos")
+    
+    colX, colY = st.columns(2)
+    
+    # PARETO DE DEFECTOS
+    with colX:
+        # Extraer automáticamente columnas que sean defectos (empiezan con DM_ o DMen_)
+        cols_defectos = [c for c in df.columns if c.startswith('DM_') or c.startswith('DMen_')]
+        if cols_defectos:
+            st.markdown("##### 📉 Priorización de Defectos (Pareto)")
+            sum_defectos = df[cols_defectos].sum().sort_values(ascending=False)
+            df_p = pd.DataFrame({'Defecto': sum_defectos.index, 'Impacto': sum_defectos.values})
+            if df_p['Impacto'].sum() > 0:
+                df_p['Acumulado'] = (df_p['Impacto'].cumsum() / df_p['Impacto'].sum()) * 100
+                
+                # USO CORRECTO DE MAKE_SUBPLOTS
+                fig_p = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_p.add_trace(go.Bar(x=df_p['Defecto'], y=df_p['Impacto'], name="Impacto", marker_color='#34495e'), secondary_y=False)
+                fig_p.add_trace(go.Scatter(x=df_p['Defecto'], y=df_p['Acumulado'], name="% Acumulado", mode='lines+markers', line=dict(color='#e74c3c', width=3)), secondary_y=True)
+                fig_p.update_layout(height=450, template="plotly_white", margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
+                fig_p.update_yaxes(range=[0, 105], secondary_y=True)
+                st.plotly_chart(fig_p, use_container_width=True)
+            else:
+                st.success("No se registraron defectos en este periodo.")
+        else:
+            st.info("No se detectaron columnas de defectos (con prefijo DM_ o DMen_).")
+
+    # DIAGRAMA DE DISPERSIÓN (REGRESIÓN)
+    with colY:
+        st.markdown("##### 🔍 Motor de Correlación Matemática")
+        cols_num = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c]) and c not in ['Año', 'Mes', 'Semana', 'Día']]
+        
+        if len(cols_num) >= 2:
+            cx1, cx2 = st.columns(2)
+            var_x = cx1.selectbox("Variable Independiente (X):", cols_num, index=0)
+            var_y = cx2.selectbox("Variable Dependiente (Y):", cols_num, index=1)
+            
+            mask = np.isfinite(df[var_x]) & np.isfinite(df[var_y])
+            if mask.sum() > 2:
+                r_pearson, _ = stats.pearsonr(df[var_x][mask], df[var_y][mask])
+                if r_pearson > 0.7: diag = "Correlación Positiva Fuerte ↗️"
+                elif r_pearson > 0.3: diag = "Correlación Positiva ↗️"
+                elif r_pearson > -0.3: diag = "Sin Correlación 🔀"
+                elif r_pearson > -0.7: diag = "Correlación Negativa ↘️"
+                else: diag = "Correlación Negativa Fuerte ↘️"
+                
+                st.caption(f"**Diagnóstico:** {diag} | **Pearson (r):** {r_pearson:.2f}")
+                
+                fig_disp = px.scatter(df, x=var_x, y=var_y, trendline="ols", color='Proveedor' if 'Proveedor' in df.columns else None, color_continuous_scale='Viridis')
+                fig_disp.update_traces(marker=dict(size=8, opacity=0.7), selector=dict(mode='markers'))
+                fig_disp.update_traces(line=dict(color='red', width=4), selector=dict(mode='lines'))
+                fig_disp.update_layout(height=350, template="plotly_white", margin=dict(t=10, b=0))
+                st.plotly_chart(fig_disp, use_container_width=True)
+            else:
+                st.warning("Datos insuficientes para calcular correlación.")
