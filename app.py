@@ -199,22 +199,33 @@ with tab3:
     
     colX, colY = st.columns(2)
     
+    # PARETO DE DEFECTOS
     with colX:
         cols_defectos = [c for c in df.columns if c.startswith('DM_') or c.startswith('DMen_')]
         if cols_defectos:
             st.markdown("##### 📉 Tasa de Errores en Línea de Empaque (Pareto)")
-            st.info("💡 **Análisis de Proceso:** Altos niveles de daños mecánicos (Camarón Estropeado) revelan cuellos de botella físicos, caídas bruscas en las bandas o maltrato durante el empaque manual.")
+            st.info("💡 **Análisis de Proceso:** Altos niveles de daños mecánicos revelan cuellos de botella físicos o maltrato durante el empaque manual.")
             
             sum_defectos = df[cols_defectos].sum().sort_values(ascending=False)
             df_p = pd.DataFrame({'Defecto': sum_defectos.index, 'Impacto': sum_defectos.values})
-            if df_p['Impacto'].sum() > 0:
-                df_p['Acumulado'] = (df_p['Impacto'].cumsum() / df_p['Impacto'].sum()) * 100
+            
+            total_impacto = df_p['Impacto'].sum() # Cálculo del 100% real
+            
+            if total_impacto > 0:
+                df_p['Acumulado'] = (df_p['Impacto'].cumsum() / total_impacto) * 100
                 
                 fig_p = make_subplots(specs=[[{"secondary_y": True}]])
+                
+                # Barra principal
                 fig_p.add_trace(go.Bar(x=df_p['Defecto'], y=df_p['Impacto'], name="Impacto", marker_color='#38bdf8'), secondary_y=False)
+                # Línea de acumulado
                 fig_p.add_trace(go.Scatter(x=df_p['Defecto'], y=df_p['Acumulado'], name="% Acumulado", mode='lines+markers', line=dict(color='#e74c3c', width=3)), secondary_y=True)
+                
+                # LA MAGIA MATEMÁTICA: Sincronizar los ejes para que el punto nazca sobre la barra
+                fig_p.update_yaxes(range=[0, total_impacto * 1.05], secondary_y=False, showgrid=False)
+                fig_p.update_yaxes(range=[0, 105], secondary_y=True, showgrid=False)
+                
                 fig_p.update_layout(height=450, template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
-                fig_p.update_yaxes(range=[0, 105], secondary_y=True)
                 st.plotly_chart(fig_p, use_container_width=True)
             else:
                 st.success("Operación limpia: No se registraron defectos.")
