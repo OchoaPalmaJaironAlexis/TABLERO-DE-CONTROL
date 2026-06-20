@@ -203,7 +203,7 @@ with tab3:
         cols_defectos = [c for c in df.columns if c.startswith('DM_') or c.startswith('DMen_')]
         if cols_defectos:
             st.markdown("##### 📉 Tasa de Errores en Línea de Empaque (Pareto)")
-            st.info("💡 **Análisis de Proceso:** Altos niveles de daños mecánicos (Antenas Rotas, Estropeado) revelan cuellos de botella físicos, caídas bruscas en las bandas o maltrato durante el empaque manual.")
+            st.info("💡 **Análisis de Proceso:** Altos niveles de daños mecánicos (Camarón Estropeado) revelan cuellos de botella físicos, caídas bruscas en las bandas o maltrato durante el empaque manual.")
             
             sum_defectos = df[cols_defectos].sum().sort_values(ascending=False)
             df_p = pd.DataFrame({'Defecto': sum_defectos.index, 'Impacto': sum_defectos.values})
